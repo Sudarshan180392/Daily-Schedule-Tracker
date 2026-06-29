@@ -4,6 +4,13 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useAuth } from './AuthWrapper';
+import {
+  fetchAllUserData, upsertSettings, upsertDayTasks, upsertWellbeing,
+  insertMock, deleteMock as deleteMockDB,
+  insertCA, updateCA, deleteCA, batchUpdateCA,
+  deleteAllUserData, bulkImportData,
+} from './supabaseData';
 import {
   PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -13,7 +20,7 @@ import autoTable from 'jspdf-autotable';
 
 /* ─────────────────────── Constants ─────────────────────── */
 
-const STORAGE_KEY = 'upsc_tracker_30day';
+const STORAGE_KEY = 'upsc_tracker_30day'; // kept for one-time migration
 const DEFAULT_SUBJECTS = [
   'History', 'Geography', 'Polity', 'Economy',
   'Science & Tech', 'Environment', 'CSAT', 'Ethics', 'Essay',
@@ -280,7 +287,7 @@ function StatCard({ icon, label, value, sub, color = 'indigo' }) {
    DASHBOARD TAB
    ═══════════════════════════════════════════════════════════════ */
 
-function Dashboard({ data, setData }) {
+function Dashboard({ data, setData, onImportJSON }) {
   const { settings, days, mocks } = data;
   const fileRef = useRef(null);
 
@@ -431,11 +438,11 @@ function Dashboard({ data, setData }) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const imported = JSON.parse(ev.target.result);
         if (imported.settings && imported.days) {
-          setData(imported);
+          await onImportJSON(imported);
           alert('Data restored successfully! ✅');
         } else {
           alert('Invalid backup file format.');
@@ -444,7 +451,7 @@ function Dashboard({ data, setData }) {
     };
     reader.readAsText(file);
     e.target.value = '';
-  }, [setData]);
+  }, [onImportJSON]);
 
   const heatColor = (hours) => {
     if (hours === 0) return 'bg-slate-100 dark:bg-slate-800/80';
@@ -973,7 +980,7 @@ function PeriodSummary({ data }) {
    MOCK ANALYSIS TAB
    ═══════════════════════════════════════════════════════════════ */
 
-function MockAnalysis({ data, setData }) {
+function MockAnalysis({ data, setData, addMockAndSync, removeMockAndSync }) {
   const { mocks, settings } = data;
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -998,12 +1005,12 @@ function MockAnalysis({ data, setData }) {
       maxScore: parseFloat(form.maxScore) || 200,
       subjectScores: { ...form.subjectScores },
     };
-    setData(prev => ({ ...prev, mocks: [...prev.mocks, newMock] }));
+    addMockAndSync(newMock);
     resetForm();
   };
 
   const removeMock = (id) => {
-    setData(prev => ({ ...prev, mocks: prev.mocks.filter(m => m.id !== id) }));
+    removeMockAndSync(id);
   };
 
   const updateSubjectScore = (subject, field, value) => {
@@ -1214,7 +1221,7 @@ function MockAnalysis({ data, setData }) {
    CURRENT AFFAIRS LOG TAB
    ═══════════════════════════════════════════════════════════════ */
 
-function CurrentAffairsLog({ data, setData }) {
+function CurrentAffairsLog({ data, setData, addCAAndSync, removeCAAndSync, toggleRevisedAndSync, markAllRevisedAndSync }) {
   const { currentAffairs, settings } = data;
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -1223,23 +1230,20 @@ function CurrentAffairsLog({ data, setData }) {
 
   const addEntry = () => {
     if (!form.topic) return;
-    setData(prev => ({
-      ...prev,
-      currentAffairs: [{ id: uid(), ...form, revised: false }, ...prev.currentAffairs],
-    }));
+    addCAAndSync({ ...form, revised: false });
     setForm({ date: todayISO(), topic: '', category: 'Polity', source: '', notes: '' });
     setShowForm(false);
   };
 
   const removeEntry = (id) => {
-    setData(prev => ({ ...prev, currentAffairs: prev.currentAffairs.filter(e => e.id !== id) }));
+    removeCAAndSync(id);
   };
 
   const toggleRevised = (id) => {
-    setData(prev => ({
-      ...prev,
-      currentAffairs: prev.currentAffairs.map(e => e.id === id ? { ...e, revised: !e.revised } : e),
-    }));
+    const entry = currentAffairs.find(e => e.id === id);
+    if (entry) {
+      toggleRevisedAndSync(id, !entry.revised);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -1257,11 +1261,8 @@ function CurrentAffairsLog({ data, setData }) {
   }, [currentAffairs, filter, search]);
 
   const markAllRevised = () => {
-    const ids = new Set(filtered.map(e => e.id));
-    setData(prev => ({
-      ...prev,
-      currentAffairs: prev.currentAffairs.map(e => ids.has(e.id) ? { ...e, revised: true } : e),
-    }));
+    const ids = filtered.map(e => e.id);
+    markAllRevisedAndSync(ids);
   };
 
   const revisedCount = currentAffairs.filter(e => e.revised).length;
@@ -1404,7 +1405,7 @@ function CurrentAffairsLog({ data, setData }) {
    SETTINGS TAB
    ═══════════════════════════════════════════════════════════════ */
 
-function SettingsPanel({ data, setData }) {
+function SettingsPanel({ data, setData, addSubjectAndSync, removeSubjectAndSync }) {
   const { settings } = data;
   const [newSubject, setNewSubject] = useState('');
 
@@ -1415,38 +1416,13 @@ function SettingsPanel({ data, setData }) {
   const addSubject = () => {
     const trimmed = newSubject.trim();
     if (!trimmed || settings.subjects.includes(trimmed)) return;
-    update('subjects', [...settings.subjects, trimmed]);
+    addSubjectAndSync(trimmed);
     setNewSubject('');
-    // Add to all days
-    setData(prev => {
-      const newDays = { ...prev.days };
-      for (let d = 1; d <= 30; d++) {
-        newDays[d] = {
-          ...newDays[d],
-          tasks: [
-            ...newDays[d].tasks,
-            { id: `d${d}_new_${uid()}`, subject: trimmed, topic: '', targetHours: 0, actualHours: 0, notes: '' },
-          ],
-        };
-      }
-      return { ...prev, days: newDays };
-    });
   };
 
   const removeSubject = (subj) => {
     if (settings.subjects.length <= 1) return;
-    update('subjects', settings.subjects.filter(s => s !== subj));
-    // Remove from all days
-    setData(prev => {
-      const newDays = { ...prev.days };
-      for (let d = 1; d <= 30; d++) {
-        newDays[d] = {
-          ...newDays[d],
-          tasks: newDays[d].tasks.filter(t => t.subject !== subj),
-        };
-      }
-      return { ...prev, days: newDays };
-    });
+    removeSubjectAndSync(subj);
   };
 
   return (
@@ -1551,7 +1527,7 @@ function Footer() {
 
           {/* Right — tech stack note */}
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center sm:text-right">
-            UPSC/SPSC Prelims Prep Tracker &nbsp;·&nbsp; Built with React + Recharts
+            UPSC/SPSC Prelims Prep Tracker &nbsp;·&nbsp; Built with ❤️ in 🇮🇳
           </p>
 
         </div>
@@ -1561,48 +1537,598 @@ function Footer() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   UTILITY: Debounce Hook
+   ═══════════════════════════════════════════════════════════════ */
+
+function useDebouncedCallback(callback, delay) {
+  const timerRef = useRef(null);
+  const latestCb = useRef(callback);
+  latestCb.current = callback;
+
+  const debounced = useCallback((...args) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => latestCb.current(...args), delay);
+  }, [delay]);
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  return debounced;
+}
+
+/* ─── Save Indicator ─── */
+function SaveIndicator({ status }) {
+  if (status === 'idle') return null;
+  return (
+    <span className={`text-xs font-medium px-2.5 py-1 rounded-full transition-all duration-300 ${
+      status === 'saving'
+        ? 'bg-amber-100/80 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 animate-pulse'
+        : status === 'saved'
+          ? 'bg-emerald-100/80 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+          : 'bg-rose-100/80 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400'
+    }`}>
+      {status === 'saving' ? '⏳ Saving…' : status === 'saved' ? '✓ Saved' : '⚠ Error'}
+    </span>
+  );
+}
+
+/* ─── Error Toast ─── */
+function ErrorToast({ message, onClose }) {
+  useEffect(() => {
+    const t = setTimeout(onClose, 6000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
+  return (
+    <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[60] max-w-md w-full px-4 tab-enter">
+      <div className="bg-rose-600 text-white rounded-xl shadow-2xl px-4 py-3 flex items-center gap-3">
+        <span className="text-xl">⚠️</span>
+        <p className="text-sm flex-1">{message}</p>
+        <button onClick={onClose} className="text-white/70 hover:text-white text-lg">✕</button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Loading Skeleton ─── */
+function LoadingSkeleton() {
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-5">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xl shadow-indigo-500/30">
+            <span className="text-3xl">📊</span>
+          </div>
+          <div className="absolute -inset-2 rounded-3xl border-2 border-indigo-400/30 animate-ping" />
+        </div>
+        <div className="text-center">
+          <p className="text-slate-700 dark:text-slate-300 font-semibold">Loading your prep data…</p>
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Syncing from cloud</p>
+        </div>
+        <div className="flex gap-1">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Migration Modal ─── */
+function MigrationModal({ onMigrate, onSkip, migrating }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 max-w-sm w-full tab-enter">
+        <div className="text-4xl mb-3 text-center">📦</div>
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white text-center mb-2">
+          Migrate Local Data?
+        </h3>
+        <p className="text-sm text-slate-600 dark:text-slate-400 text-center mb-6">
+          We found existing study data in your browser. Would you like to upload it to the cloud so it's backed up and accessible from any device?
+        </p>
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={onSkip}
+            disabled={migrating}
+            className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+          >
+            Start Fresh
+          </button>
+          <button
+            onClick={onMigrate}
+            disabled={migrating}
+            className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {migrating ? (
+              <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Migrating…</>
+            ) : (
+              '☁️ Upload to Cloud'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    MAIN APP COMPONENT
    ═══════════════════════════════════════════════════════════════ */
 
 export default function UPSCTracker() {
-  const [data, setData] = useState(loadState);
+  const { user } = useAuth();
+  const userId = user.id;
+
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showReset, setShowReset] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [showMigration, setShowMigration] = useState(false);
+  const [migrating, setMigrating] = useState(false);
 
-  // Persist to localStorage
+  const saveTimerRef = useRef(null);
+
+  /* ── Helper: show save status briefly ── */
+  const flashSave = useCallback((status) => {
+    setSaveStatus(status);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (status === 'saved' || status === 'error') {
+      saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2500);
+    }
+  }, []);
+
+  /* ── Helper: handle Supabase errors ── */
+  const handleError = useCallback((err) => {
+    console.error('Supabase error:', err);
+    flashSave('error');
+    setErrorMsg(typeof err === 'string' ? err : 'Something went wrong. Please try again.');
+  }, [flashSave]);
+
+  /* ═══════ INITIAL DATA LOAD ═══════ */
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }, [data]);
+    let cancelled = false;
 
-  // Dark mode class toggle
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', data.settings.darkMode);
-  }, [data.settings.darkMode]);
+    async function loadFromSupabase() {
+      const result = await fetchAllUserData(userId);
+      if (cancelled) return;
 
-  const toggleDark = () => {
-    setData(prev => ({
-      ...prev,
-      settings: { ...prev.settings, darkMode: !prev.settings.darkMode },
-    }));
-  };
+      if (result.error) {
+        handleError(result.error);
+        // Fall back to initial state so the app is usable
+        setData(createInitialState());
+        setLoading(false);
+        return;
+      }
 
-  const handleReset = () => {
+      // Check if user has data in Supabase
+      const hasSupabaseData = result.settings !== null;
+
+      if (hasSupabaseData) {
+        // Reconstruct app state from Supabase data
+        const subjects = result.settings.subjects || DEFAULT_SUBJECTS;
+        const appData = {
+          settings: result.settings,
+          days: {},
+          mocks: result.mocks,
+          currentAffairs: result.currentAffairs,
+        };
+        // Ensure all 30 days exist with defaults
+        for (let d = 1; d <= 30; d++) {
+          const dbDay = result.days[d];
+          appData.days[d] = {
+            tasks: dbDay?.tasks?.length > 0 ? dbDay.tasks : subjects.map((s, j) => ({
+              id: `d${d}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+            })),
+            wellbeing: dbDay?.wellbeing || { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
+          };
+        }
+        setData(appData);
+        setLoading(false);
+      } else {
+        // New user — check for localStorage migration
+        const localRaw = localStorage.getItem(STORAGE_KEY);
+        if (localRaw) {
+          try {
+            const parsed = JSON.parse(localRaw);
+            if (parsed.settings && parsed.days) {
+              // Show migration modal
+              setData(createInitialState()); // temp state for background
+              setShowMigration(true);
+              setLoading(false);
+              return;
+            }
+          } catch { /* corrupt data, ignore */ }
+        }
+        // Truly new user — create initial state and save to Supabase
+        const fresh = createInitialState();
+        setData(fresh);
+        setLoading(false);
+        // Save initial state to Supabase in background
+        const settingsErr = await upsertSettings(userId, fresh.settings);
+        if (settingsErr.error) handleError(settingsErr.error);
+        // Seed all 30 days of tasks + wellbeing
+        for (let d = 1; d <= 30; d++) {
+          await upsertDayTasks(userId, d, fresh.days[d].tasks);
+          await upsertWellbeing(userId, d, fresh.days[d].wellbeing);
+        }
+      }
+    }
+
+    loadFromSupabase();
+    return () => { cancelled = true; };
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ═══════ LOCALSTORAGE MIGRATION ═══════ */
+  const handleMigrate = useCallback(async () => {
+    setMigrating(true);
+    try {
+      const localRaw = localStorage.getItem(STORAGE_KEY);
+      const parsed = JSON.parse(localRaw);
+      // Ensure integrity
+      for (let i = 1; i <= 30; i++) {
+        if (!parsed.days[i]) {
+          parsed.days[i] = {
+            tasks: (parsed.settings?.subjects || DEFAULT_SUBJECTS).map((s, j) => ({
+              id: `d${i}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+            })),
+            wellbeing: { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
+          };
+        }
+      }
+      if (!parsed.mocks) parsed.mocks = [];
+      if (!parsed.currentAffairs) parsed.currentAffairs = [];
+
+      const result = await bulkImportData(userId, parsed);
+      if (result.error) {
+        handleError(result.error);
+        setMigrating(false);
+        return;
+      }
+      // Clear localStorage
+      localStorage.removeItem(STORAGE_KEY);
+      // Reload from Supabase to get proper IDs
+      const freshLoad = await fetchAllUserData(userId);
+      if (!freshLoad.error && freshLoad.settings) {
+        const subjects = freshLoad.settings.subjects || DEFAULT_SUBJECTS;
+        const appData = {
+          settings: freshLoad.settings,
+          days: {},
+          mocks: freshLoad.mocks,
+          currentAffairs: freshLoad.currentAffairs,
+        };
+        for (let d = 1; d <= 30; d++) {
+          const dbDay = freshLoad.days[d];
+          appData.days[d] = {
+            tasks: dbDay?.tasks?.length > 0 ? dbDay.tasks : subjects.map((s, j) => ({
+              id: `d${d}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+            })),
+            wellbeing: dbDay?.wellbeing || { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
+          };
+        }
+        setData(appData);
+      } else {
+        setData(parsed);
+      }
+      setShowMigration(false);
+    } catch (err) {
+      handleError(err.message);
+    }
+    setMigrating(false);
+  }, [userId, handleError]);
+
+  const handleSkipMigration = useCallback(async () => {
+    localStorage.removeItem(STORAGE_KEY);
     const fresh = createInitialState();
     setData(fresh);
-    localStorage.removeItem(STORAGE_KEY);
+    setShowMigration(false);
+    // Save fresh state to Supabase
+    await upsertSettings(userId, fresh.settings);
+    for (let d = 1; d <= 30; d++) {
+      await upsertDayTasks(userId, d, fresh.days[d].tasks);
+      await upsertWellbeing(userId, d, fresh.days[d].wellbeing);
+    }
+  }, [userId]);
+
+  /* ═══════ DEBOUNCED SUPABASE SAVES ═══════ */
+
+  // Debounced save for day tasks (fires 500ms after last change)
+  const debouncedSaveTasks = useDebouncedCallback(async (dayNumber, tasks) => {
+    flashSave('saving');
+    const result = await upsertDayTasks(userId, dayNumber, tasks);
+    if (result.error) handleError(result.error);
+    else {
+      flashSave('saved');
+      // Update local IDs with server-generated ones if available
+      if (result.data && result.data.length > 0) {
+        setData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            days: {
+              ...prev.days,
+              [dayNumber]: {
+                ...prev.days[dayNumber],
+                tasks: result.data,
+              },
+            },
+          };
+        });
+      }
+    }
+  }, 500);
+
+  // Debounced save for wellbeing
+  const debouncedSaveWellbeing = useDebouncedCallback(async (dayNumber, wellbeing) => {
+    flashSave('saving');
+    const result = await upsertWellbeing(userId, dayNumber, wellbeing);
+    if (result.error) handleError(result.error);
+    else flashSave('saved');
+  }, 500);
+
+  // Debounced save for settings
+  const debouncedSaveSettings = useDebouncedCallback(async (settings) => {
+    flashSave('saving');
+    const result = await upsertSettings(userId, settings);
+    if (result.error) handleError(result.error);
+    else flashSave('saved');
+  }, 500);
+
+  /* ═══════ WRAPPED setData THAT TRIGGERS SUPABASE SAVES ═══════ */
+
+  /**
+   * Intercepts state changes and triggers appropriate Supabase saves.
+   * Uses a "detect what changed" approach comparing prev and next state.
+   */
+  const setDataWithSync = useCallback((updater) => {
+    setData(prev => {
+      if (!prev) return prev;
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+
+      // ── Detect settings changes ──
+      if (next.settings !== prev.settings) {
+        debouncedSaveSettings(next.settings);
+      }
+
+      // ── Detect day changes (tasks / wellbeing) ──
+      for (let d = 1; d <= 30; d++) {
+        if (next.days[d] !== prev.days[d]) {
+          if (next.days[d].tasks !== prev.days[d]?.tasks) {
+            debouncedSaveTasks(d, next.days[d].tasks);
+          }
+          if (next.days[d].wellbeing !== prev.days[d]?.wellbeing) {
+            debouncedSaveWellbeing(d, next.days[d].wellbeing);
+          }
+        }
+      }
+
+      // Mocks and CA are saved immediately by their own handlers (not via setData diff)
+      return next;
+    });
+  }, [debouncedSaveSettings, debouncedSaveTasks, debouncedSaveWellbeing]);
+
+  /* ═══════ MOCK HANDLERS (immediate save) ═══════ */
+
+  const addMockAndSync = useCallback(async (newMock) => {
+    flashSave('saving');
+    const result = await insertMock(userId, newMock);
+    if (result.error) {
+      handleError(result.error);
+      return;
+    }
+    setData(prev => prev ? { ...prev, mocks: [...prev.mocks, result.data] } : prev);
+    flashSave('saved');
+  }, [userId, flashSave, handleError]);
+
+  const removeMockAndSync = useCallback(async (mockId) => {
+    flashSave('saving');
+    const result = await deleteMockDB(userId, mockId);
+    if (result.error) {
+      handleError(result.error);
+      return;
+    }
+    setData(prev => prev ? { ...prev, mocks: prev.mocks.filter(m => m.id !== mockId) } : prev);
+    flashSave('saved');
+  }, [userId, flashSave, handleError]);
+
+  /* ═══════ CA HANDLERS (immediate save) ═══════ */
+
+  const addCAAndSync = useCallback(async (entry) => {
+    flashSave('saving');
+    const result = await insertCA(userId, entry);
+    if (result.error) {
+      handleError(result.error);
+      return;
+    }
+    setData(prev => prev ? { ...prev, currentAffairs: [result.data, ...prev.currentAffairs] } : prev);
+    flashSave('saved');
+  }, [userId, flashSave, handleError]);
+
+  const removeCAAndSync = useCallback(async (caId) => {
+    flashSave('saving');
+    const result = await deleteCA(userId, caId);
+    if (result.error) {
+      handleError(result.error);
+      return;
+    }
+    setData(prev => prev ? { ...prev, currentAffairs: prev.currentAffairs.filter(e => e.id !== caId) } : prev);
+    flashSave('saved');
+  }, [userId, flashSave, handleError]);
+
+  const toggleRevisedAndSync = useCallback(async (caId, newRevised) => {
+    flashSave('saving');
+    const result = await updateCA(userId, caId, { revised: newRevised });
+    if (result.error) {
+      handleError(result.error);
+      return;
+    }
+    setData(prev => prev ? {
+      ...prev,
+      currentAffairs: prev.currentAffairs.map(e => e.id === caId ? { ...e, revised: newRevised } : e),
+    } : prev);
+    flashSave('saved');
+  }, [userId, flashSave, handleError]);
+
+  const markAllRevisedAndSync = useCallback(async (ids) => {
+    flashSave('saving');
+    const result = await batchUpdateCA(userId, ids, { revised: true });
+    if (result.error) {
+      handleError(result.error);
+      return;
+    }
+    const idSet = new Set(ids);
+    setData(prev => prev ? {
+      ...prev,
+      currentAffairs: prev.currentAffairs.map(e => idSet.has(e.id) ? { ...e, revised: true } : e),
+    } : prev);
+    flashSave('saved');
+  }, [userId, flashSave, handleError]);
+
+  /* ═══════ DARK MODE ═══════ */
+  useEffect(() => {
+    if (data) document.documentElement.classList.toggle('dark', data.settings.darkMode);
+  }, [data?.settings?.darkMode]);
+
+  const toggleDark = useCallback(() => {
+    setData(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, settings: { ...prev.settings, darkMode: !prev.settings.darkMode } };
+      // Save immediately (not debounced — dark mode is a toggle)
+      upsertSettings(userId, next.settings);
+      return next;
+    });
+  }, [userId]);
+
+  /* ═══════ RESET ═══════ */
+  const handleReset = useCallback(async () => {
+    flashSave('saving');
+    const result = await deleteAllUserData(userId);
+    if (result.error) {
+      handleError(result.error);
+      setShowReset(false);
+      return;
+    }
+    const fresh = createInitialState();
+    setData(fresh);
     setShowReset(false);
     setActiveTab('dashboard');
-  };
+    flashSave('saved');
+    // Re-seed Supabase with fresh defaults
+    await upsertSettings(userId, fresh.settings);
+    for (let d = 1; d <= 30; d++) {
+      await upsertDayTasks(userId, d, fresh.days[d].tasks);
+      await upsertWellbeing(userId, d, fresh.days[d].wellbeing);
+    }
+  }, [userId, flashSave, handleError]);
+
+  /* ═══════ IMPORT JSON ═══════ */
+  const handleImportJSON = useCallback(async (imported) => {
+    flashSave('saving');
+    const result = await bulkImportData(userId, imported);
+    if (result.error) {
+      handleError(result.error);
+      return;
+    }
+    // Reload from Supabase to get proper IDs
+    const freshLoad = await fetchAllUserData(userId);
+    if (!freshLoad.error && freshLoad.settings) {
+      const subjects = freshLoad.settings.subjects || DEFAULT_SUBJECTS;
+      const appData = {
+        settings: freshLoad.settings,
+        days: {},
+        mocks: freshLoad.mocks,
+        currentAffairs: freshLoad.currentAffairs,
+      };
+      for (let d = 1; d <= 30; d++) {
+        const dbDay = freshLoad.days[d];
+        appData.days[d] = {
+          tasks: dbDay?.tasks?.length > 0 ? dbDay.tasks : subjects.map((s, j) => ({
+            id: `d${d}_t${j}_${uid()}`, subject: s, topic: '', targetHours: 0, actualHours: 0, notes: '',
+          })),
+          wellbeing: dbDay?.wellbeing || { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 },
+        };
+      }
+      setData(appData);
+    } else {
+      setData(imported);
+    }
+    flashSave('saved');
+  }, [userId, flashSave, handleError]);
+
+  /* ═══════ SUBJECT ADD/REMOVE (settings + tasks cascade) ═══════ */
+  const addSubjectAndSync = useCallback(async (trimmed) => {
+    flashSave('saving');
+    setData(prev => {
+      if (!prev) return prev;
+      const newSettings = { ...prev.settings, subjects: [...prev.settings.subjects, trimmed] };
+      const newDays = { ...prev.days };
+      for (let d = 1; d <= 30; d++) {
+        newDays[d] = {
+          ...newDays[d],
+          tasks: [
+            ...newDays[d].tasks,
+            { id: `d${d}_new_${uid()}`, subject: trimmed, topic: '', targetHours: 0, actualHours: 0, notes: '' },
+          ],
+        };
+      }
+      // Save settings + all day tasks to Supabase
+      (async () => {
+        const settingsErr = await upsertSettings(userId, newSettings);
+        if (settingsErr.error) { handleError(settingsErr.error); return; }
+        for (let d = 1; d <= 30; d++) {
+          const taskErr = await upsertDayTasks(userId, d, newDays[d].tasks);
+          if (taskErr.error) { handleError(taskErr.error); return; }
+        }
+        flashSave('saved');
+      })();
+      return { ...prev, settings: newSettings, days: newDays };
+    });
+  }, [userId, flashSave, handleError]);
+
+  const removeSubjectAndSync = useCallback(async (subj) => {
+    flashSave('saving');
+    setData(prev => {
+      if (!prev) return prev;
+      const newSettings = { ...prev.settings, subjects: prev.settings.subjects.filter(s => s !== subj) };
+      const newDays = { ...prev.days };
+      for (let d = 1; d <= 30; d++) {
+        newDays[d] = {
+          ...newDays[d],
+          tasks: newDays[d].tasks.filter(t => t.subject !== subj),
+        };
+      }
+      // Save settings + all day tasks to Supabase
+      (async () => {
+        const settingsErr = await upsertSettings(userId, newSettings);
+        if (settingsErr.error) { handleError(settingsErr.error); return; }
+        for (let d = 1; d <= 30; d++) {
+          const taskErr = await upsertDayTasks(userId, d, newDays[d].tasks);
+          if (taskErr.error) { handleError(taskErr.error); return; }
+        }
+        flashSave('saved');
+      })();
+      return { ...prev, settings: newSettings, days: newDays };
+    });
+  }, [userId, flashSave, handleError]);
+
+  /* ═══════ RENDER ═══════ */
+
+  if (loading || !data) return <LoadingSkeleton />;
 
   const renderTab = () => {
     switch (activeTab) {
-      case 'dashboard': return <Dashboard data={data} setData={setData} />;
-      case 'daysheet':  return <DaySheet data={data} setData={setData} />;
+      case 'dashboard': return <Dashboard data={data} setData={setDataWithSync} onImportJSON={handleImportJSON} />;
+      case 'daysheet':  return <DaySheet data={data} setData={setDataWithSync} />;
       case 'summary':   return <PeriodSummary data={data} />;
-      case 'mocks':     return <MockAnalysis data={data} setData={setData} />;
-      case 'ca':        return <CurrentAffairsLog data={data} setData={setData} />;
-      case 'settings':  return <SettingsPanel data={data} setData={setData} />;
-      default:          return <Dashboard data={data} setData={setData} />;
+      case 'mocks':     return <MockAnalysis data={data} setData={setDataWithSync}
+                           addMockAndSync={addMockAndSync} removeMockAndSync={removeMockAndSync} />;
+      case 'ca':        return <CurrentAffairsLog data={data} setData={setDataWithSync}
+                           addCAAndSync={addCAAndSync} removeCAAndSync={removeCAAndSync}
+                           toggleRevisedAndSync={toggleRevisedAndSync} markAllRevisedAndSync={markAllRevisedAndSync} />;
+      case 'settings':  return <SettingsPanel data={data} setData={setDataWithSync}
+                           addSubjectAndSync={addSubjectAndSync} removeSubjectAndSync={removeSubjectAndSync} />;
+      default:          return <Dashboard data={data} setData={setDataWithSync} onImportJSON={handleImportJSON} />;
     }
   };
 
@@ -1615,13 +2141,16 @@ export default function UPSCTracker() {
             <h1 className="text-lg md:text-xl font-bold tracking-tight">{data.settings.periodName || 'UPSC Prep Tracker'}</h1>
             <p className="text-indigo-200 text-xs md:text-sm">UPSC/SPSC Prelims</p>
           </div>
-          <button
-            onClick={toggleDark}
-            className="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-xl transition-all backdrop-blur-sm"
-            title={data.settings.darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >
-            {data.settings.darkMode ? '☀️' : '🌙'}
-          </button>
+          <div className="flex items-center gap-3">
+            <SaveIndicator status={saveStatus} />
+            <button
+              onClick={toggleDark}
+              className="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-xl transition-all backdrop-blur-sm"
+              title={data.settings.darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {data.settings.darkMode ? '☀️' : '🌙'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1645,8 +2174,12 @@ export default function UPSCTracker() {
         🗑️
       </button>
 
-      {/* Reset Modal */}
+      {/* Modals */}
       {showReset && <ResetModal onConfirm={handleReset} onCancel={() => setShowReset(false)} />}
+      {showMigration && <MigrationModal onMigrate={handleMigrate} onSkip={handleSkipMigration} migrating={migrating} />}
+
+      {/* Error Toast */}
+      {errorMsg && <ErrorToast message={errorMsg} onClose={() => setErrorMsg(null)} />}
     </div>
   );
 }
