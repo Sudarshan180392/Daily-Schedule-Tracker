@@ -1836,7 +1836,7 @@ function Footer() {
 
           {/* Right — tech stack note */}
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center sm:text-right">
-            UPSC/SPSC Prelims Prep Tracker &nbsp;·&nbsp; Built with ❤️ in 🇮🇳
+            UPSC/SPSC Prep Tracker &nbsp;·&nbsp; Built with ❤️ in 🇮🇳
           </p>
 
         </div>
@@ -2515,7 +2515,7 @@ export default function UPSCTracker() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-lg md:text-xl font-bold tracking-tight">{data.settings.periodName || 'UPSC Prep Tracker'}</h1>
-            <p className="text-indigo-200 text-xs md:text-sm">UPSC/SPSC Prelims</p>
+            <p className="text-indigo-200 text-xs md:text-sm">UPSC/SPSC Prep Tracker</p>
           </div>
           <div className="flex items-center gap-3">
             <SaveIndicator status={saveStatus} />
