@@ -547,15 +547,14 @@ export async function fetchProfile(userId) {
  */
 export async function updateProfile(userId, updates) {
   try {
-    const mapped = {}
+    const mapped = { id: userId }
     if ('displayName' in updates) mapped.display_name = updates.displayName
     if ('avatarUrl' in updates) mapped.avatar_url = updates.avatarUrl
     if ('isPublic' in updates) mapped.is_public = updates.isPublic
 
     const { error } = await supabase
       .from('profiles')
-      .update(mapped)
-      .eq('id', userId)
+      .upsert(mapped, { onConflict: 'id' })
 
     return { error: error?.message || null }
   } catch (err) {
