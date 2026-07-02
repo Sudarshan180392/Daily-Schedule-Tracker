@@ -24,12 +24,11 @@ import autoTable from 'jspdf-autotable';
 
 const STORAGE_KEY = 'upsc_tracker_30day'; // kept for one-time migration
 const DEFAULT_SUBJECTS = [
-  'History', 'Geography', 'Polity', 'Economy',
-  'Science & Tech', 'Environment', 'CSAT', 'Ethics', 'Essay',
-];
+  'Polity', 'Economy','History','Geography',
+  'Science & Tech', 'Environment', 'CSAT',];
 const CA_CATEGORIES = [
-  'All', 'Polity', 'Economy', 'International', 'Science & Tech',
-  'Environment', 'Society', 'Security', 'Governance', 'Culture', 'Other',
+  'Polity', 'Economy', 'International Relations', 'Science & Tech',
+  'Environment', 'Society', 'Security', 'Governance', 'Art & Culture', 'Ethics','History','Other',
 ];
 const CHART_COLORS = [
   '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
@@ -1897,8 +1896,10 @@ function Footer() {
           {/* Right — tech stack note */}
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center sm:text-right">
             UPSC/SPSC Prep Tracker &nbsp;·&nbsp; Built with ❤️ in 🇮🇳
-          </p>
+            <br />
+            For any issue regarding the App or your general prep drop a mail at sudarshan.contactwebdev@gmail.com
 
+          </p>
         </div>
       </div>
     </footer>
