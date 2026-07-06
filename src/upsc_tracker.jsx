@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import TourGuide, { isTourCompleted } from './TourGuide';
 
 /* ─────────────────────── Constants ─────────────────────── */
 
@@ -2038,6 +2039,7 @@ export default function UPSCTracker() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [showMigration, setShowMigration] = useState(false);
   const [migrating, setMigrating] = useState(false);
+  const [showTour, setShowTour] = useState(false);
 
   const saveTimerRef = useRef(null);
 
@@ -2431,6 +2433,15 @@ export default function UPSCTracker() {
     flashSave('saved');
   }, [userId, flashSave, handleError]);
 
+  /* ═══════ AUTO-TRIGGER TOUR FOR FIRST-TIME USERS ═══════ */
+  useEffect(() => {
+    if (!loading && data && !isTourCompleted()) {
+      // Slight delay so the UI renders first
+      const timer = setTimeout(() => setShowTour(true), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, data]);
+
   /* ═══════ DARK MODE ═══════ */
   useEffect(() => {
     if (data) document.documentElement.classList.toggle('dark', data.settings.darkMode);
@@ -2604,6 +2615,13 @@ export default function UPSCTracker() {
           <div className="flex items-center gap-3">
             <SaveIndicator status={saveStatus} />
             <button
+              onClick={() => setShowTour(true)}
+              className="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-lg font-bold transition-all backdrop-blur-sm tour-btn-glow"
+              title="Take a Quick Tour"
+            >
+              ?
+            </button>
+            <button
               onClick={toggleDark}
               className="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-xl transition-all backdrop-blur-sm"
               title={data.settings.darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
@@ -2637,6 +2655,9 @@ export default function UPSCTracker() {
       {/* Modals */}
       {showReset && <ResetModal onConfirm={handleReset} onCancel={() => setShowReset(false)} />}
       {showMigration && <MigrationModal onMigrate={handleMigrate} onSkip={handleSkipMigration} migrating={migrating} />}
+
+      {/* Tour Guide */}
+      <TourGuide isOpen={showTour} onClose={() => setShowTour(false)} />
 
       {/* Error Toast */}
       {errorMsg && <ErrorToast message={errorMsg} onClose={() => setErrorMsg(null)} />}
