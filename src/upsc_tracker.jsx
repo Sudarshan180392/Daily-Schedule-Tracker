@@ -147,9 +147,9 @@ function loadState() {
   return createInitialState();
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/*
    SUB-COMPONENTS
-   ═══════════════════════════════════════════════════════════════ */
+   */
 
 /* ─── Stopwatch Timer ─── */
 function StopwatchTimer({ onTimeAdd }) {
@@ -539,18 +539,18 @@ function Dashboard({ data, setData, onImportJSON }) {
             ))}
           </div>
           {/* Legend */}
-          <div className="flex items-center gap-2 mt-3 justify-end">
+          {/* <div className="flex items-center gap-2 mt-3 justify-end">
             <span className="text-[10px] text-slate-400">Less</span>
             {['bg-slate-100 dark:bg-slate-800/80', 'bg-emerald-200 dark:bg-emerald-900/50', 'bg-emerald-300 dark:bg-emerald-700/60', 'bg-emerald-400 dark:bg-emerald-600/70', 'bg-emerald-500 dark:bg-emerald-500'].map((c, i) => (
               <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
             ))}
             <span className="text-[10px] text-slate-400">More</span>
-          </div>
+          </div> */}
         </div>
       </div>
 
       {/* Export / Import / Copy */}
-      <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5">
+      {/* <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5">
         <h3 className="font-semibold text-slate-900 dark:text-white mb-4">💾 Data Management</h3>
         <div className="flex flex-wrap gap-3">
           <button onClick={exportPDF}
@@ -571,7 +571,7 @@ function Dashboard({ data, setData, onImportJSON }) {
             📋 Copy Summary
           </button>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }
@@ -1814,12 +1814,12 @@ function SettingsPanel({ data, setData, addSubjectAndSync, removeSubjectAndSync,
           </div>
           <button
             onClick={() => update('showWellbeing', !settings.showWellbeing)}
-            className={`relative w-12 h-7 rounded-full transition-colors ${
+            className={`relative w-12 h-7 rounded-full overflow-hidden transition-colors ${
               settings.showWellbeing ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
             }`}
           >
-            <span className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
-              settings.showWellbeing ? 'translate-x-5.5' : 'translate-x-0.5'
+            <span className={`absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+              settings.showWellbeing ? 'translate-x-[22px]' : 'translate-x-0.5'
             }`} />
           </button>
         </div>
@@ -1854,11 +1854,11 @@ function SettingsPanel({ data, setData, addSubjectAndSync, removeSubjectAndSync,
               </div>
               <button
                 onClick={() => onUpdateProfile({ isPublic: !profile.is_public })}
-                className={`relative w-12 h-7 rounded-full transition-colors flex-shrink-0 ml-4 ${
+                className={`relative w-12 h-7 rounded-full overflow-hidden transition-colors flex-shrink-0 ml-4 ${
                   profile.is_public ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-600'
                 }`}
               >
-                <span className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                <span className={`absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${
                   profile.is_public ? 'translate-x-5.5' : 'translate-x-0.5'
                 }`} />
               </button>
@@ -1896,7 +1896,7 @@ function Footer() {
 
           {/* Right — tech stack note */}
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center sm:text-right">
-            UPSC/SPSC Prep Tracker &nbsp;·&nbsp; Built with ❤️ in 🇮🇳
+            Prep Tracker&nbsp;·&nbsp;Built with ❤️ in 🇮🇳
             <br />
             For any issue regarding the App or your general prep drop a mail at sudarshan.contactwebdev@gmail.com
 
@@ -2072,7 +2072,7 @@ export default function UPSCTracker() {
       if (!profileRes.error && !cancelled) {
         let currentProfile = profileRes.data;
         if (!currentProfile) {
-          const defaultName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'UPSC Aspirant';
+          const defaultName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Aspirant';
           const defaultAvatar = user.user_metadata?.avatar_url || null;
           await createProfile(userId, { displayName: defaultName, avatarUrl: defaultAvatar, isPublic: false });
           const retryProfile = await fetchProfile(userId);
@@ -2597,8 +2597,8 @@ export default function UPSCTracker() {
       <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white px-4 md:px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-lg md:text-xl font-bold tracking-tight">{data.settings.periodName || 'UPSC Prep Tracker'}</h1>
-            <p className="text-indigo-200 text-xs md:text-sm">UPSC/SPSC Prep Tracker</p>
+            <h1 className="text-lg md:text-xl font-bold tracking-tight">{data.settings.periodName || 'Prep Tracker'}</h1>
+            <p className="text-indigo-200 text-xs md:text-sm">Prep Tracker</p>
           </div>
 
           {activeTab === 'dashboard' && (
