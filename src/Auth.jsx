@@ -169,8 +169,8 @@ export default function Auth({ onAuthSuccess }) {
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-600/40 mb-4">
               <span className="text-3xl">🎯</span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">UPSC/SPSC PrepSheet</h1>
-            <p className="text-indigo-300 text-sm mt-1">30-Days Tracker · UPSC/SPSC Prep </p>
+            <h1 className="text-2xl font-bold text-white tracking-tight">UPSC/SPSC Prep Tracker</h1>
+            <p className="text-indigo-300 text-sm mt-1">30-Days Tracker · For UPSC/State PSC & Other competitive exams </p>
           </div>
 
           {/* Card */}
@@ -336,7 +336,7 @@ export default function Auth({ onAuthSuccess }) {
 
           {/* Footer note */}
           <p className="text-center text-slate-600 text-xs mt-6">
-            By signing in you agree to use this app for UPSC/SPSC preparation only.<br />
+            By signing in you agree to use this app for preparation purposes only.<br />
             Your data is private and stored securely.
           </p>
 
