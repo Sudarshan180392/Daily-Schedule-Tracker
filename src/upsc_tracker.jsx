@@ -9,7 +9,7 @@ import {
   fetchAllUserData, upsertSettings, upsertDayTasks, upsertWellbeing,
   insertMock, deleteMock as deleteMockDB,
   insertCA, updateCA, deleteCA, batchUpdateCA,
-  deleteAllUserData, bulkImportData,
+  deleteAllUserData, archiveUserData, bulkImportData,
   fetchProfile, updateProfile, createProfile, upsertDailySummary,
   fetchCommunityFeed, fetchLeaderboard, toggleCheer,
 } from './supabaseData';
@@ -211,7 +211,7 @@ function ResetModal({ onConfirm, onCancel }) {
           Reset All Data?
         </h3>
         <p className="text-sm text-slate-600 dark:text-slate-400 text-center mb-6">
-          This will permanently delete all your tracker data including study logs, mocks, and current affairs. This action cannot be undone.
+          This will clear your current tracker and start a fresh 30-day period. Your previous data will be archived in the cloud securely.
         </p>
         <div className="flex gap-3 justify-center">
           <button
@@ -2460,7 +2460,7 @@ export default function UPSCTracker() {
   /* ═══════ RESET ═══════ */
   const handleReset = useCallback(async () => {
     flashSave('saving');
-    const result = await deleteAllUserData(userId);
+    const result = await archiveUserData(userId);
     if (result.error) {
       handleError(result.error);
       setShowReset(false);

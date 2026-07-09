@@ -335,9 +335,11 @@ export default function Auth({ onAuthSuccess }) {
           </div>
 
           {/* Footer note */}
-          <p className="text-center text-slate-600 text-xs mt-6">
+          <p className="text-center text-slate-500 text-xs mt-6">
             By signing in you agree to use this app for preparation purposes only.<br />
             Your data is private and stored securely.
+            <br />
+            For issues in sigining up contact at sudarshan.contactwebdev@gmail.com
           </p>
 
         </div>

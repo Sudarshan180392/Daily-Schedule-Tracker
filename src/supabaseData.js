@@ -435,6 +435,20 @@ export async function batchUpdateCA(userId, ids, updates) {
    ═══════════════════════════════════════════════════════════════ */
 
 /**
+ * Archive ALL data for a user by calling the Supabase RPC function.
+ * @param {string} userId
+ * @returns {{ error: string|null }}
+ */
+export async function archiveUserData(userId) {
+  try {
+    const { error } = await supabase.rpc('archive_user_data', { target_user_id: userId })
+    return { error: error?.message || null }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
+
+/**
  * Delete ALL data for a user across all tables.
  * @param {string} userId
  * @returns {{ error: string|null }}
