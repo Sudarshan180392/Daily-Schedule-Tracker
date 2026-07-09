@@ -211,7 +211,7 @@ function ResetModal({ onConfirm, onCancel }) {
           Reset All Data?
         </h3>
         <p className="text-sm text-slate-600 dark:text-slate-400 text-center mb-6">
-          This will clear your current tracker and start a fresh 30-day period. Your previous data will be archived in the cloud securely.
+          This will clear your current tracker and start a fresh 30-day period. Your previous data may be lost & you may need to sign in again!
         </p>
         <div className="flex gap-3 justify-center">
           <button
