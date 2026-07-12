@@ -539,13 +539,13 @@ function Dashboard({ data, setData, onImportJSON }) {
             ))}
           </div>
           {/* Legend */}
-          {/* <div className="flex items-center gap-2 mt-3 justify-end">
+          <div className="flex items-center gap-2 mt-3 justify-end">
             <span className="text-[10px] text-slate-400">Less</span>
             {['bg-slate-100 dark:bg-slate-800/80', 'bg-emerald-200 dark:bg-emerald-900/50', 'bg-emerald-300 dark:bg-emerald-700/60', 'bg-emerald-400 dark:bg-emerald-600/70', 'bg-emerald-500 dark:bg-emerald-500'].map((c, i) => (
               <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
             ))}
             <span className="text-[10px] text-slate-400">More</span>
-          </div> */}
+          </div>
         </div>
       </div>
 
@@ -2040,6 +2040,8 @@ export default function UPSCTracker() {
   const [showMigration, setShowMigration] = useState(false);
   const [migrating, setMigrating] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
   const saveTimerRef = useRef(null);
 
@@ -2442,6 +2444,60 @@ export default function UPSCTracker() {
     }
   }, [loading, data]);
 
+  /* ═══════ NOTIFICATIONS ═══════ */
+  const activeNotifications = useMemo(() => {
+    if (!data) return [];
+    const notifs = [];
+    
+    let currentStreak = 0;
+    for (let i = 30; i >= 1; i--) {
+      const h = data.days[i]?.tasks?.reduce((s, t) => s + (t.actualHours || 0), 0) || 0;
+      if (h > 0) currentStreak++;
+      else if (currentStreak > 0) break;
+    }
+    
+    const lastStreak = data.settings.lastKnownStreak || 0;
+    if (lastStreak > 2 && currentStreak <= Math.floor(lastStreak / 2) + 1 && currentStreak < lastStreak) {
+      notifs.push({ id: 'streak', text: 'Oh no! Your streak was reduced by half because of a break. Let\'s get it back!', icon: '💔' });
+    }
+
+    const lastLog = data.settings.lastLoggedDate;
+    if (lastLog) {
+      const daysDiff = Math.floor((new Date() - new Date(lastLog)) / 86400000);
+      if (daysDiff >= 1) {
+        notifs.push({ id: 'log', text: `You have not logged your study since ${new Date(lastLog).toLocaleDateString()}!`, icon: '⏰' });
+      }
+    }
+    return notifs;
+  }, [data]);
+
+  const hasUnreadNotifs = useMemo(() => {
+    if (!data || activeNotifications.length === 0) return false;
+    const todayISO = () => {
+      const d = new Date();
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      return d.toISOString().split('T')[0];
+    };
+    return data.settings.lastNotifReadDate !== todayISO();
+  }, [data, activeNotifications]);
+
+  const handleOpenNotifications = () => {
+    setShowNotifDropdown(!showNotifDropdown);
+    if (!showNotifDropdown && hasUnreadNotifs) {
+       const todayISO = () => {
+         const d = new Date();
+         d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+         return d.toISOString().split('T')[0];
+       };
+       setData(prev => {
+         if (!prev) return prev;
+         const next = { ...prev, settings: { ...prev.settings, lastNotifReadDate: todayISO() } };
+         upsertSettings(userId, next.settings);
+         return next;
+       });
+    }
+  };
+
   /* ═══════ DARK MODE ═══════ */
   useEffect(() => {
     if (data) document.documentElement.classList.toggle('dark', data.settings.darkMode);
@@ -2595,7 +2651,7 @@ export default function UPSCTracker() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       {/* Header */}
       <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white px-4 md:px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 relative">
           <div>
             <h1 className="text-lg md:text-xl font-bold tracking-tight">{data.settings.periodName || 'Prep Tracker'}</h1>
             <p className="text-indigo-200 text-xs md:text-sm">Prep Tracker</p>
@@ -2612,8 +2668,39 @@ export default function UPSCTracker() {
             </div>
           )}
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 relative">
             <SaveIndicator status={saveStatus} />
+            <button
+              onClick={handleOpenNotifications}
+              className="relative w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-xl transition-all backdrop-blur-sm"
+              title="Notifications"
+            >
+              🔔
+              {hasUnreadNotifs && (
+                <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-indigo-600"></span>
+              )}
+            </button>
+            {showNotifDropdown && (
+              <div className="absolute top-12 right-12 mt-2 w-72 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden tab-enter">
+                <div className="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
+                  <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">Notifications</h3>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {activeNotifications.length > 0 ? (
+                    activeNotifications.map((n, idx) => (
+                      <div key={n.id + idx} className="p-3 border-b border-slate-50 dark:border-slate-700/50 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <span className="text-xl">{n.icon}</span>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{n.text}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-sm">
+                      You're all caught up!
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <button
               onClick={() => setShowTour(true)}
               className="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-lg font-bold transition-all backdrop-blur-sm tour-btn-glow"
