@@ -477,6 +477,18 @@ function Dashboard({ data, setData, onImportJSON }) {
 
   return (
     <div className="space-y-6">
+      {/* Video Walkthrough Button */}
+      <div className="flex justify-center md:justify-end mb-2">
+        <a
+          href="https://www.youtube.com/watch?v=xjkUYntLT-A"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 text-white font-bold text-sm shadow-lg shadow-red-500/25 hover:shadow-red-500/40 hover:-translate-y-0.5 transition-all"
+        >
+          <span>▶️</span> How to effectively use the App!
+        </a>
+      </div>
+
       {/* Mobile-only Quote Banner */}
       <div className="block lg:hidden bg-indigo-50/40 dark:bg-indigo-950/15 border border-indigo-100/40 dark:border-indigo-900/20 rounded-2xl p-4 text-center">
         <p className="text-sm italic text-indigo-700 dark:text-indigo-300 font-medium leading-relaxed">
