@@ -257,7 +257,17 @@ export default function TourGuide({ isOpen, onClose }) {
       setTargetRect(null);
       return;
     }
-    const el = document.querySelector(step.target);
+    let targetSelector = step.target;
+    if (window.innerWidth < 768) {
+      if (targetSelector === '#tab-dashboard') {
+        targetSelector = '#tab-dashboard-mobile';
+      } else if (targetSelector === '#tab-daysheet') {
+        targetSelector = '#tab-daysheet-mobile';
+      } else if (targetSelector.startsWith('#tab-')) {
+        targetSelector = '#tab-more-mobile';
+      }
+    }
+    const el = document.querySelector(targetSelector);
     if (el) {
       const rect = el.getBoundingClientRect();
       setTargetRect(rect);

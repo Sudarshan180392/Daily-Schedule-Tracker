@@ -257,6 +257,16 @@ function ResetModal({ onConfirm, onCancel }) {
 
 /* ─── Tab Bar (Desktop Top + Mobile Bottom) ─── */
 function TabBar({ activeTab, onTabChange }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const primaryMobileTabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'daysheet',  label: 'Day Sheet',  icon: '📅' },
+    { id: 'revision',  label: 'Revision',   icon: '🔄' },
+  ];
+
+  const isMenuTabActive = !primaryMobileTabs.some(tab => tab.id === activeTab);
+
   return (
     <>
       {/* Desktop: horizontal top bar */}
@@ -278,12 +288,24 @@ function TabBar({ activeTab, onTabChange }) {
         ))}
       </nav>
 
+      {/* Mobile Backdrop Overlay when dropdown is open */}
+      {isMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-slate-950/20 dark:bg-slate-950/40 backdrop-blur-xs transition-opacity duration-200"
+          onClick={() => setIsMenuOpen(false)}
+        />
+      )}
+
       {/* Mobile: fixed bottom bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-700/60 flex justify-around py-1.5 safe-bottom">
-        {TABS.map(tab => (
+        {primaryMobileTabs.map(tab => (
           <button
             key={tab.id}
-            onClick={() => onTabChange(tab.id)}
+            id={`tab-${tab.id}-mobile`}
+            onClick={() => {
+              onTabChange(tab.id);
+              setIsMenuOpen(false);
+            }}
             className={`flex flex-col items-center py-1 px-1 min-w-[3.5rem] text-[10px] font-medium transition-all
               ${activeTab === tab.id
                 ? 'text-indigo-600 dark:text-indigo-400 scale-105'
@@ -294,6 +316,54 @@ function TabBar({ activeTab, onTabChange }) {
             <span className="mt-0.5">{tab.label}</span>
           </button>
         ))}
+
+        {/* More (Hamburger style) button */}
+        <button
+          id="tab-more-mobile"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+          className={`flex flex-col items-center py-1 px-1 min-w-[3.5rem] text-[10px] font-medium transition-all relative
+            ${isMenuTabActive || isMenuOpen
+              ? 'text-indigo-600 dark:text-indigo-400 scale-105'
+              : 'text-slate-400 dark:text-slate-500'
+            }`}
+        >
+          <span className="text-xl leading-tight">☰</span>
+          <span className="mt-0.5">More</span>
+        </button>
+
+        {/* Mobile Hamburger Dropdown Menu */}
+        {isMenuOpen && (
+          <div className="absolute bottom-16 right-4 w-60 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-xl z-40 py-2 menu-enter">
+            <div className="px-3.5 py-1.5 border-b border-slate-100 dark:border-slate-800/60 mb-1">
+              <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                All Features
+              </span>
+            </div>
+            {TABS.map(tab => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    onTabChange(tab.id);
+                    setIsMenuOpen(false);
+                  }}
+                  className={`w-[calc(100%-1rem)] mx-2 flex items-center gap-3 px-3 py-2 text-sm font-medium transition-all rounded-xl text-left
+                    ${isActive
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                    }`}
+                >
+                  <span className="text-lg">{tab.icon}</span>
+                  <span>{tab.label}</span>
+                  {isActive && (
+                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </nav>
     </>
   );
