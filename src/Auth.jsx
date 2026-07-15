@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 
 /* ─── Phone formatting helper ─── */
@@ -44,11 +45,11 @@ export default function Auth({ onAuthSuccess }) {
   /* ── Listen for auth state (handles Google redirect) ── */
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) onAuthSuccess(session)
+      if (session && onAuthSuccess) onAuthSuccess(session)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) onAuthSuccess(session)
+      if (session && onAuthSuccess) onAuthSuccess(session)
     })
 
     return () => subscription.unsubscribe()
@@ -109,7 +110,7 @@ export default function Auth({ onAuthSuccess }) {
     if (error) {
       setError(error.message)
     } else if (data.session) {
-      onAuthSuccess(data.session)
+      if (onAuthSuccess) onAuthSuccess(data.session)
     }
   }
 
@@ -163,6 +164,16 @@ export default function Auth({ onAuthSuccess }) {
 
         {/* Auth Form Column */}
         <div className="w-full max-w-md">
+
+          {/* Back to Home */}
+          <div className="mb-6 flex justify-start">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-white transition-colors py-1.5 px-3 rounded-lg hover:bg-white/5 border border-white/10"
+            >
+              ← Back to Home
+            </Link>
+          </div>
 
           {/* Logo & Title */}
           <div className="text-center mb-8">

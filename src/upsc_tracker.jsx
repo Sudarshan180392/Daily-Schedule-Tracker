@@ -40,6 +40,7 @@ const MOODS = ['😫', '😐', '🙂', '😊', '🔥'];
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
   { id: 'daysheet',  label: 'Day Sheet',  icon: '📅' },
+  { id: 'revision',  label: 'Revision',   icon: '🔄' },
   { id: 'summary',   label: 'Summary',    icon: '📈' },
   { id: 'community', label: 'Community',  icon: '🤝' },
   { id: 'mocks',     label: 'Mocks',      icon: '🎯' },
@@ -86,6 +87,28 @@ function estimatePercentile(score, maxScore = 200) {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/* ─── Revision Suffix Helpers ─── */
+function parseTaskNotes(notesString) {
+  const defaultVal = { notes: notesString || '', r1: false, r2: false, r3: false, inRevision: true };
+  if (!notesString) return defaultVal;
+  const match = notesString.match(/(.*?)\s\|rev:([01])([01])([01])([01])?$/);
+  if (match) {
+    return {
+      notes: match[1] || '',
+      r1: match[2] === '1',
+      r2: match[3] === '1',
+      r3: match[4] === '1',
+      inRevision: match[5] !== '0',
+    };
+  }
+  return defaultVal;
+}
+
+function serializeTaskNotes(notesText, r1, r2, r3, inRevision = true) {
+  const cleanNotes = (notesText || '').replace(/\s\|rev:[01]{3,4}$/, '').trim();
+  return `${cleanNotes} |rev:${r1 ? '1' : '0'}${r2 ? '1' : '0'}${r3 ? '1' : '0'}${inRevision ? '1' : '0'}`;
 }
 
 /* ─────────────────────── State Factory ─────────────────────── */
@@ -834,8 +857,12 @@ function DaySheet({ data, setData }) {
                   <td className="p-3">
                     <input
                       type="text"
-                      value={task.notes}
-                      onChange={e => updateTask(task.id, 'notes', e.target.value)}
+                      value={parseTaskNotes(task.notes).notes}
+                      onChange={e => {
+                        const parsed = parseTaskNotes(task.notes);
+                        const serialized = serializeTaskNotes(e.target.value, parsed.r1, parsed.r2, parsed.r3, parsed.inRevision);
+                        updateTask(task.id, 'notes', serialized);
+                      }}
                       placeholder="Notes"
                       className="w-full bg-transparent border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm text-slate-900 dark:text-white placeholder-slate-400"
                     />
@@ -921,6 +948,326 @@ function DaySheet({ data, setData }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SPACED REVISION TRACKER TAB
+   ═══════════════════════════════════════════════════════════════ */
+
+function RevisionTracker({ data, setData }) {
+  const { settings } = data;
+  const [subjectFilter, setSubjectFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 1. Gather all tasks from days 1-30 that have a topic
+  const revisionItems = useMemo(() => {
+    const items = [];
+    for (let d = 1; d <= 30; d++) {
+      const day = data.days[d];
+      if (!day || !day.tasks) continue;
+      day.tasks.forEach(task => {
+        if (task.topic && task.topic.trim() !== '') {
+          const parsed = parseTaskNotes(task.notes);
+          if (parsed.inRevision) {
+            items.push({
+              dayNumber: d,
+              taskId: task.id,
+              subject: task.subject,
+              topic: task.topic,
+              notes: parsed.notes,
+              r1: parsed.r1,
+              r2: parsed.r2,
+              r3: parsed.r3,
+              originalTask: task,
+            });
+          }
+        }
+      });
+    }
+    // Sort by day number
+    return items.sort((a, b) => a.dayNumber - b.dayNumber);
+  }, [data]);
+
+  // 2. Filter items by subject and search query
+  const filteredItems = useMemo(() => {
+    return revisionItems.filter(item => {
+      const matchesSubject = subjectFilter === 'All' || item.subject === subjectFilter;
+      const matchesSearch = item.topic.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            item.notes.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            item.subject.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSubject && matchesSearch;
+    });
+  }, [revisionItems, subjectFilter, searchQuery]);
+
+  // Toggle R1/R2/R3 checkboxes
+  const handleToggleRevision = (dayNumber, taskId, round, checked) => {
+    setData(prev => {
+      const dayTasks = prev.days[dayNumber].tasks;
+      const updatedTasks = dayTasks.map(t => {
+        if (t.id === taskId) {
+          const parsed = parseTaskNotes(t.notes);
+          const newNotes = serializeTaskNotes(
+            parsed.notes,
+            round === 'r1' ? checked : parsed.r1,
+            round === 'r2' ? checked : parsed.r2,
+            round === 'r3' ? checked : parsed.r3,
+            true
+          );
+          return { ...t, notes: newNotes };
+        }
+        return t;
+      });
+      return {
+        ...prev,
+        days: {
+          ...prev.days,
+          [dayNumber]: {
+            ...prev.days[dayNumber],
+            tasks: updatedTasks
+          }
+        }
+      };
+    });
+  };
+
+  // Remove task from revision tracking (✕)
+  const handleRemoveFromRevision = (dayNumber, taskId) => {
+    setData(prev => {
+      const dayTasks = prev.days[dayNumber].tasks;
+      const updatedTasks = dayTasks.map(t => {
+        if (t.id === taskId) {
+          const parsed = parseTaskNotes(t.notes);
+          const newNotes = serializeTaskNotes(
+            parsed.notes,
+            parsed.r1,
+            parsed.r2,
+            parsed.r3,
+            false
+          );
+          return { ...t, notes: newNotes };
+        }
+        return t;
+      });
+      return {
+        ...prev,
+        days: {
+          ...prev.days,
+          [dayNumber]: {
+            ...prev.days[dayNumber],
+            tasks: updatedTasks
+          }
+        }
+      };
+    });
+  };
+
+  // Edit topic, notes or subject directly inside revision tracker
+  const handleEditField = (dayNumber, taskId, field, value) => {
+    setData(prev => {
+      const dayTasks = prev.days[dayNumber].tasks;
+      const updatedTasks = dayTasks.map(t => {
+        if (t.id === taskId) {
+          if (field === 'topic') {
+            return { ...t, topic: value };
+          } else if (field === 'notes') {
+            const parsed = parseTaskNotes(t.notes);
+            const newNotes = serializeTaskNotes(
+              value,
+              parsed.r1,
+              parsed.r2,
+              parsed.r3,
+              parsed.inRevision
+            );
+            return { ...t, notes: newNotes };
+          } else if (field === 'subject') {
+            return { ...t, subject: value };
+          }
+        }
+        return t;
+      });
+      return {
+        ...prev,
+        days: {
+          ...prev.days,
+          [dayNumber]: {
+            ...prev.days[dayNumber],
+            tasks: updatedTasks
+          }
+        }
+      };
+    });
+  };
+
+  return (
+    <div className="space-y-4 tab-enter">
+      <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span>🔄</span> Spaced Revision Tracker
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Tracks topics logged in your Day Sheet. Tick R1, R2, R3 checkpoints to record your progress.
+          </p>
+        </div>
+
+        <div className="w-full md:w-64">
+          <input
+            type="text"
+            placeholder="🔍 Search topics..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-1 focus:ring-indigo-500 outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="overflow-x-auto scrollbar-thin pb-1">
+        <div className="flex gap-2 min-w-max">
+          <button
+            onClick={() => setSubjectFilter('All')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              subjectFilter === 'All'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            All Subjects ({revisionItems.length})
+          </button>
+          {settings.subjects.map(s => {
+            const count = revisionItems.filter(item => item.subject === s).length;
+            return (
+              <button
+                key={s}
+                onClick={() => setSubjectFilter(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  subjectFilter === s
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {s} ({count})
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 overflow-hidden">
+        {filteredItems.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+            <span className="text-4xl block mb-2">📑</span>
+            <p className="text-sm font-semibold">No topics found</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {revisionItems.length === 0
+                ? 'Log subjects and topics in your Day Sheet to start tracking revisions!'
+                : 'Try adjusting your subject filters or search query.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full text-sm text-left">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-700/40 border-b border-slate-200 dark:border-slate-700/30 text-slate-600 dark:text-slate-300 font-semibold">
+                  <th className="p-3 w-16 text-center">Day</th>
+                  <th className="p-3 min-w-[120px]">Subject</th>
+                  <th className="p-3 min-w-[180px]">Topic</th>
+                  <th className="p-3 text-center w-16">R1</th>
+                  <th className="p-3 text-center w-16">R2</th>
+                  <th className="p-3 text-center w-16">R3</th>
+                  <th className="p-3 min-w-[140px]">Notes</th>
+                  <th className="p-3 w-10 text-center"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map(item => (
+                  <tr
+                    key={item.taskId}
+                    className="border-b border-slate-100 dark:border-slate-700/30 hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors"
+                  >
+                    <td className="p-3 text-center font-bold text-slate-600 dark:text-slate-400">
+                      D{item.dayNumber}
+                    </td>
+
+                    <td className="p-3">
+                      <select
+                        value={item.subject}
+                        onChange={e => handleEditField(item.dayNumber, item.taskId, 'subject', e.target.value)}
+                        className="bg-transparent border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1 text-xs text-slate-900 dark:text-white focus:outline-none"
+                      >
+                        {settings.subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </td>
+
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={item.topic}
+                        onChange={e => handleEditField(item.dayNumber, item.taskId, 'topic', e.target.value)}
+                        className="w-full bg-transparent hover:bg-slate-50 dark:hover:bg-slate-900/40 focus:bg-slate-50 dark:focus:bg-slate-900/60 border border-transparent focus:border-slate-200 dark:focus:border-slate-700 rounded px-2 py-1 text-slate-900 dark:text-white focus:outline-none"
+                      />
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <label className="inline-flex items-center justify-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={item.r1}
+                          onChange={e => handleToggleRevision(item.dayNumber, item.taskId, 'r1', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                        />
+                      </label>
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <label className="inline-flex items-center justify-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={item.r2}
+                          onChange={e => handleToggleRevision(item.dayNumber, item.taskId, 'r2', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                        />
+                      </label>
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <label className="inline-flex items-center justify-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={item.r3}
+                          onChange={e => handleToggleRevision(item.dayNumber, item.taskId, 'r3', e.target.checked)}
+                          className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                        />
+                      </label>
+                    </td>
+
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={item.notes}
+                        onChange={e => handleEditField(item.dayNumber, item.taskId, 'notes', e.target.value)}
+                        placeholder="Add revision note..."
+                        className="w-full bg-transparent hover:bg-slate-50 dark:hover:bg-slate-900/40 focus:bg-slate-50 dark:focus:bg-slate-900/60 border border-transparent focus:border-slate-200 dark:focus:border-slate-700 rounded px-2 py-1 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none"
+                      />
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleRemoveFromRevision(item.dayNumber, item.taskId)}
+                        title="Remove from Revision Tracker"
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:bg-rose-100 hover:text-rose-600 dark:hover:bg-rose-500/20 transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -2645,6 +2992,7 @@ export default function UPSCTracker() {
     switch (activeTab) {
       case 'dashboard': return <Dashboard data={data} setData={setDataWithSync} onImportJSON={handleImportJSON} />;
       case 'daysheet':  return <DaySheet data={data} setData={setDataWithSync} />;
+      case 'revision':  return <RevisionTracker data={data} setData={setDataWithSync} />;
       case 'summary':   return <PeriodSummary data={data} />;
       case 'community': return <CommunityPanel />;
       case 'mocks':     return <MockAnalysis data={data} setData={setDataWithSync}
