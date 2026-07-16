@@ -37,6 +37,8 @@ function dbSettingsToApp(row) {
     subjects: row.subjects || ['History','Geography','Polity','Economy','Science & Tech','Environment','CSAT','Ethics','Essay'],
     showWellbeing: row.show_wellbeing ?? true,
     darkMode: row.dark_mode ?? false,
+    lastUpdatedSection: row.last_updated_section || null,
+    lastSectionUpdatedAt: row.last_section_updated_at || null,
   }
 }
 
@@ -55,6 +57,22 @@ function dbCAToApp(row) {
 
 /** Default wellbeing for a day that has no DB row. */
 const DEFAULT_WELLBEING = { sleepHours: 7, waterLitres: 2, exercise: false, mood: 2 }
+
+/* ─────────────────────── Last Updated Section ─────────────────────── */
+
+/**
+ * Update which section the user last touched. Fire-and-forget.
+ * @param {string} userId
+ * @param {string} sectionName - e.g. 'Day Tasks', 'Wellbeing', 'Mock Tests', 'Current Affairs', 'Settings'
+ */
+export async function updateLastSection(userId, sectionName) {
+  try {
+    await supabase.from('user_settings').update({
+      last_updated_section: sectionName,
+      last_section_updated_at: new Date().toISOString(),
+    }).eq('user_id', userId)
+  } catch { /* silent — non-critical */ }
+}
 
 /* ═══════════════════════════════════════════════════════════════
    FETCH ALL USER DATA
@@ -575,7 +593,7 @@ export async function createProfile(userId, profile) {
         id: userId,
         display_name: profile.displayName || 'UPSC Aspirant',
         avatar_url: profile.avatarUrl || null,
-        is_public: profile.isPublic ?? false,
+        is_public: profile.isPublic ?? true,
       })
       .select()
       .single()

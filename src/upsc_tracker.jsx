@@ -12,6 +12,7 @@ import {
   deleteAllUserData, archiveUserData, bulkImportData,
   fetchProfile, updateProfile, createProfile, upsertDailySummary,
   fetchCommunityFeed, fetchLeaderboard, toggleCheer,
+  updateLastSection,
 } from './supabaseData';
 import {
   PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis,
@@ -598,31 +599,66 @@ function Dashboard({ data, setData, onImportJSON }) {
         <StatCard icon="🔥" label="Streak" value={streak} sub={streak > 0 ? `day${streak !== 1 ? 's' : ''} in a row!` : 'Start studying!'} color="amber" />
       </div>
 
+      {/* Last Updated Section Banner */}
+      {settings.lastUpdatedSection && (
+        <div className="flex items-center gap-3 bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-violet-950/30 dark:to-fuchsia-950/20 border border-violet-200/60 dark:border-violet-800/30 rounded-2xl px-5 py-3">
+          <span className="text-xl">✏️</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-violet-800 dark:text-violet-300">
+              Last Updated: <span className="text-fuchsia-600 dark:text-fuchsia-400">{settings.lastUpdatedSection}</span>
+            </p>
+            <p className="text-xs text-violet-600/70 dark:text-violet-400/60">
+              {settings.lastSectionUpdatedAt
+                ? new Date(settings.lastSectionUpdatedAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                : ''}
+            </p>
+          </div>
+          <span className="text-xs font-medium bg-violet-100 dark:bg-violet-900/50 text-violet-700 dark:text-violet-300 px-3 py-1 rounded-full whitespace-nowrap">
+            {(() => {
+              if (!settings.lastSectionUpdatedAt) return '';
+              const diff = Date.now() - new Date(settings.lastSectionUpdatedAt).getTime();
+              const mins = Math.floor(diff / 60000);
+              if (mins < 1) return 'Just now';
+              if (mins < 60) return `${mins}m ago`;
+              const hrs = Math.floor(mins / 60);
+              if (hrs < 24) return `${hrs}h ago`;
+              return `${Math.floor(hrs / 24)}d ago`;
+            })()}
+          </span>
+        </div>
+      )}
+
       <div className="grid md:grid-cols-2 gap-6">
         {/* Donut Chart */}
-        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5">
+        <div className="bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/40 p-5 flex flex-col">
           <h3 className="font-semibold text-slate-900 dark:text-white mb-4">📊 Subject Hours Distribution</h3>
           {subjectHours.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
-              <PieChart>
-                <Pie
-                  data={subjectHours}
-                  cx="50%" cy="50%"
-                  innerRadius={55} outerRadius={100}
-                  paddingAngle={3}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}h`}
-                  labelLine={{ strokeWidth: 1 }}
-                >
-                  {subjectHours.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => `${v}h`} />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="flex-1 w-full min-h-[280px] md:min-h-[340px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart margin={{ top: 30, right: 30, bottom: 30, left: 30 }} style={{ overflow: 'visible' }}>
+                  <Pie
+                    data={subjectHours}
+                    cx="50%" cy="50%"
+                    innerRadius="40%" outerRadius="65%"
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ name, value, x, y, textAnchor }) => (
+                      <text x={x} y={y} textAnchor={textAnchor} dominantBaseline="central" fontSize={12} fill="#64748b" style={{ pointerEvents: 'none' }}>
+                        {`${name}: ${value}h`}
+                      </text>
+                    )}
+                    labelLine={{ strokeWidth: 1 }}
+                  >
+                    {subjectHours.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => `${v}h`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           ) : (
-            <div className="h-[260px] flex items-center justify-center text-slate-400 dark:text-slate-500">
+            <div className="flex-1 min-h-[280px] md:min-h-[340px] flex items-center justify-center text-slate-400 dark:text-slate-500">
               No study hours logged yet. Start your first day!
             </div>
           )}
@@ -2505,7 +2541,7 @@ export default function UPSCTracker() {
         if (!currentProfile) {
           const defaultName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Aspirant';
           const defaultAvatar = user.user_metadata?.avatar_url || null;
-          await createProfile(userId, { displayName: defaultName, avatarUrl: defaultAvatar, isPublic: false });
+          await createProfile(userId, { displayName: defaultName, avatarUrl: defaultAvatar, isPublic: true });
           const retryProfile = await fetchProfile(userId);
           if (!retryProfile.error && !cancelled) {
             currentProfile = retryProfile.data;
@@ -2712,12 +2748,16 @@ export default function UPSCTracker() {
     if (result.error) handleError(result.error);
     else {
       flashSave('saved');
+      updateLastSection(userId, 'Day Tasks');
+      // Update local state with section tracking
+      const sectionMeta = { lastUpdatedSection: 'Day Tasks', lastSectionUpdatedAt: new Date().toISOString() };
       // Update local IDs with server-generated ones if available
       if (result.data && result.data.length > 0) {
         setData(prev => {
           if (!prev) return prev;
           const next = {
             ...prev,
+            settings: { ...prev.settings, ...sectionMeta },
             days: {
               ...prev.days,
               [dayNumber]: {
@@ -2731,8 +2771,9 @@ export default function UPSCTracker() {
         });
       } else {
         setData(prev => {
-          if (prev) triggerDailySummaryUpdate(dayNumber, prev.days);
-          return prev;
+          if (!prev) return prev;
+          triggerDailySummaryUpdate(dayNumber, prev.days);
+          return { ...prev, settings: { ...prev.settings, ...sectionMeta } };
         });
       }
     }
@@ -2743,7 +2784,11 @@ export default function UPSCTracker() {
     flashSave('saving');
     const result = await upsertWellbeing(userId, dayNumber, wellbeing);
     if (result.error) handleError(result.error);
-    else flashSave('saved');
+    else {
+      flashSave('saved');
+      updateLastSection(userId, 'Wellbeing');
+      setData(prev => prev ? { ...prev, settings: { ...prev.settings, lastUpdatedSection: 'Wellbeing', lastSectionUpdatedAt: new Date().toISOString() } } : prev);
+    }
   }, 3000);
 
   // Debounced save for settings
@@ -2751,7 +2796,11 @@ export default function UPSCTracker() {
     flashSave('saving');
     const result = await upsertSettings(userId, settings);
     if (result.error) handleError(result.error);
-    else flashSave('saved');
+    else {
+      flashSave('saved');
+      updateLastSection(userId, 'Settings');
+      setData(prev => prev ? { ...prev, settings: { ...prev.settings, lastUpdatedSection: 'Settings', lastSectionUpdatedAt: new Date().toISOString() } } : prev);
+    }
   }, 3000);
 
   /* ═══════ WRAPPED setData THAT TRIGGERS SUPABASE SAVES ═══════ */
@@ -2796,8 +2845,9 @@ export default function UPSCTracker() {
       handleError(result.error);
       return;
     }
-    setData(prev => prev ? { ...prev, mocks: [...prev.mocks, result.data] } : prev);
+    setData(prev => prev ? { ...prev, mocks: [...prev.mocks, result.data], settings: { ...prev.settings, lastUpdatedSection: 'Mock Tests', lastSectionUpdatedAt: new Date().toISOString() } } : prev);
     flashSave('saved');
+    updateLastSection(userId, 'Mock Tests');
   }, [userId, flashSave, handleError]);
 
   const removeMockAndSync = useCallback(async (mockId) => {
@@ -2820,8 +2870,9 @@ export default function UPSCTracker() {
       handleError(result.error);
       return;
     }
-    setData(prev => prev ? { ...prev, currentAffairs: [result.data, ...prev.currentAffairs] } : prev);
+    setData(prev => prev ? { ...prev, currentAffairs: [result.data, ...prev.currentAffairs], settings: { ...prev.settings, lastUpdatedSection: 'Current Affairs', lastSectionUpdatedAt: new Date().toISOString() } } : prev);
     flashSave('saved');
+    updateLastSection(userId, 'Current Affairs');
   }, [userId, flashSave, handleError]);
 
   const removeCAAndSync = useCallback(async (caId) => {
@@ -2845,8 +2896,10 @@ export default function UPSCTracker() {
     setData(prev => prev ? {
       ...prev,
       currentAffairs: prev.currentAffairs.map(e => e.id === caId ? { ...e, revised: newRevised } : e),
+      settings: { ...prev.settings, lastUpdatedSection: 'Current Affairs', lastSectionUpdatedAt: new Date().toISOString() },
     } : prev);
     flashSave('saved');
+    updateLastSection(userId, 'Current Affairs');
   }, [userId, flashSave, handleError]);
 
   const markAllRevisedAndSync = useCallback(async (ids) => {
@@ -2860,8 +2913,10 @@ export default function UPSCTracker() {
     setData(prev => prev ? {
       ...prev,
       currentAffairs: prev.currentAffairs.map(e => idSet.has(e.id) ? { ...e, revised: true } : e),
+      settings: { ...prev.settings, lastUpdatedSection: 'Current Affairs', lastSectionUpdatedAt: new Date().toISOString() },
     } : prev);
     flashSave('saved');
+    updateLastSection(userId, 'Current Affairs');
   }, [userId, flashSave, handleError]);
 
   /* ═══════ AUTO-TRIGGER TOUR FOR FIRST-TIME USERS ═══════ */
