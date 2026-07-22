@@ -832,12 +832,16 @@ export async function checkIsSuperAdmin(userId) {
  */
 export async function deleteFeedPost(summaryId) {
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('daily_summaries')
       .delete()
       .eq('id', summaryId)
+      .select()
     
-    return { error: error?.message || null }
+    if (error) return { error: error.message };
+    if (!data || data.length === 0) return { error: "Permission denied or post not found (RLS issue)" };
+    
+    return { error: null };
   } catch (err) {
     return { error: err.message }
   }
