@@ -750,9 +750,10 @@ export async function fetchLeaderboard() {
       userMap[row.user_id].totalHours += row.total_hours || 0
     }
 
-    // Convert map to array, round values, and sort descending
+    // Convert map to array, filter, round values, and sort descending
     const leaderboard = Object.values(userMap)
       .map(u => ({ ...u, totalHours: +u.totalHours.toFixed(1) }))
+      .filter(u => u.totalHours >= 1)
       .sort((a, b) => b.totalHours - a.totalHours)
 
     return { data: leaderboard, error: null }
@@ -804,3 +805,40 @@ export async function toggleCheer(userId, summaryId, emoji) {
   }
 }
 
+/**
+ * Check if the current user is a super admin.
+ * @param {string} userId
+ * @returns {Promise<boolean>}
+ */
+export async function checkIsSuperAdmin(userId) {
+  try {
+    const { data, error } = await supabase
+      .from('super_admins')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle()
+    
+    if (error) return false;
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Delete a post from the community feed (daily_summaries).
+ * @param {string} summaryId
+ * @returns {{ error: string|null }}
+ */
+export async function deleteFeedPost(summaryId) {
+  try {
+    const { error } = await supabase
+      .from('daily_summaries')
+      .delete()
+      .eq('id', summaryId)
+    
+    return { error: error?.message || null }
+  } catch (err) {
+    return { error: err.message }
+  }
+}
