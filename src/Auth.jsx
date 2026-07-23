@@ -55,7 +55,7 @@ export default function Auth({ onAuthSuccess }) {
     return () => subscription.unsubscribe()
   }, [onAuthSuccess])
 
-  /* ── Google Sign In ── */
+  /* ── Google Sign In ──     */
   async function handleGoogleLogin() {
     setError('')
     setLoading(true)

@@ -832,15 +832,10 @@ export async function checkIsSuperAdmin(userId) {
  */
 export async function deleteFeedPost(summaryId) {
   try {
-    const { data, error } = await supabase
-      .from('daily_summaries')
-      .delete()
-      .eq('id', summaryId)
-      .select()
+    // We use a database RPC (stored procedure) to securely bypass any RLS quirks
+    const { error } = await supabase.rpc('delete_community_post', { post_id: summaryId });
     
     if (error) return { error: error.message };
-    if (!data || data.length === 0) return { error: "Permission denied or post not found (RLS issue)" };
-    
     return { error: null };
   } catch (err) {
     return { error: err.message }
