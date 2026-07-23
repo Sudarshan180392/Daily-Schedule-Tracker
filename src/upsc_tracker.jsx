@@ -21,6 +21,7 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import TourGuide, { isTourCompleted } from './TourGuide';
+import UPSCPlanningGuide from './UPSCPlanningGuide';
 
 /* ─────────────────────── Constants ─────────────────────── */
 
@@ -40,6 +41,7 @@ const CHART_COLORS = [
 const MOODS = ['😫', '😐', '🙂', '😊', '🔥'];
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'plan',      label: 'Planner',    icon: '🗺️' },
   { id: 'daysheet',  label: 'Day Sheet',  icon: '📅' },
   { id: 'revision',  label: 'Revision',   icon: '🔄' },
   { id: 'summary',   label: 'Summary',    icon: '📈' },
@@ -2243,6 +2245,7 @@ function SettingsPanel({ data, setData, addSubjectAndSync, removeSubjectAndSync,
         <h3 className="font-semibold text-slate-900 dark:text-white mb-4">📅 Exam Date</h3>
         <input
           type="date"
+          min={new Date().toISOString().split('T')[0]}
           value={settings.examDate}
           onChange={e => update('examDate', e.target.value)}
           className="border border-slate-200 dark:border-slate-600 rounded-lg px-4 py-2.5 text-sm bg-transparent text-slate-900 dark:text-white w-full max-w-xs"
@@ -3149,6 +3152,7 @@ export default function UPSCTracker() {
       case 'settings':  return <SettingsPanel data={data} setData={setDataWithSync}
                            addSubjectAndSync={addSubjectAndSync} removeSubjectAndSync={removeSubjectAndSync}
                            profile={profile} onUpdateProfile={handleUpdateProfile} />;
+      case 'plan':      return <UPSCPlanningGuide />;
       default:          return <Dashboard data={data} setData={setDataWithSync} onImportJSON={handleImportJSON} />;
     }
   };
